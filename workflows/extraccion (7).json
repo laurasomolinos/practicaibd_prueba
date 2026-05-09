@@ -1,0 +1,454 @@
+{
+  "name": "extraccion",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {}
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -608,
+        112
+      ],
+      "id": "4828cc0b-9ae0-49d2-82f0-57d7aa9e03db",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://api.open-meteo.com/v1/forecast?latitude=40.4165&longitude=-3.7026&hourly=temperature_2m,precipitation&past_days=1&forecast_days=1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -368,
+        16
+      ],
+      "id": "7e6fdd53-37ea-43c8-b2e2-d4c1cf7dab83",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "url": "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=40.4165&longitude=-3.7026&hourly=pm10,pm2_5,carbon_dioxide,uv_index,olive_pollen,ozone,methane&past_days=1&forecast_days=1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -368,
+        208
+      ],
+      "id": "956965b9-935c-4ef2-a34c-bdbc4f501029",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "bucketName": "raw-ingestion-zone",
+        "fileName": "=air/{{ $('Edit Fields aire').item.json.fileName }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.s3",
+      "typeVersion": 1,
+      "position": [
+        608,
+        208
+      ],
+      "id": "9f7089a4-482c-432d-84ef-4289c976dd3d",
+      "name": "Upload a file1",
+      "credentials": {
+        "s3": {
+          "id": "ws5nZzaoGRDqevp2",
+          "name": "S3 account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "00531edc-3ccc-4fad-a68d-316e80065d7f",
+              "name": "hourly",
+              "value": "={{ $json.hourly }}",
+              "type": "object"
+            },
+            {
+              "id": "df8627eb-fd9b-4934-8bee-d09e41e3bb03",
+              "name": "latitude",
+              "value": "={{ $json.latitude }}",
+              "type": "number"
+            },
+            {
+              "id": "9a708057-2b25-411f-adfa-a3ac5d6372af",
+              "name": "timezone",
+              "value": "={{ $json.timezone }}",
+              "type": "string"
+            },
+            {
+              "id": "e67e5587-94be-42cf-a42a-6e8a59e6651c",
+              "name": "fileName",
+              "value": "={{ 'air_raw_' + $now.format('yyyyMMdd') + '.json' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -144,
+        208
+      ],
+      "id": "41794e70-ce57-453e-a5d7-ce6cd856bbc6",
+      "name": "Edit Fields aire"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0876716b-96dd-4265-9e30-84a04219744f",
+              "name": "hourly",
+              "value": "={{ $json.hourly }}",
+              "type": "object"
+            },
+            {
+              "id": "dcd7fdf0-4dd1-4264-8fee-117572973373",
+              "name": "timezone",
+              "value": "={{ $json.timezone }}",
+              "type": "string"
+            },
+            {
+              "id": "ea6b3bfe-f198-4260-82ed-1a5273bcaa20",
+              "name": "latitude",
+              "value": "={{ $json.latitude }}",
+              "type": "number"
+            },
+            {
+              "id": "959a210a-57a3-4fb5-95b7-07f6fae7a366",
+              "name": "elevation",
+              "value": "={{ $json.elevation }}",
+              "type": "number"
+            },
+            {
+              "id": "bdbaafae-d300-46c3-ad79-8a0f4e022ff9",
+              "name": "fileName",
+              "value": "={{ 'weather_raw_' + $now.format('yyyyMMdd') + '.json' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -144,
+        16
+      ],
+      "id": "b84565ff-0c49-4f3d-bd10-2936d2fa560c",
+      "name": "Edit Fields tiempo"
+    },
+    {
+      "parameters": {
+        "jsCode": "const hourly = $input.first().json.hourly;\nconst result = [];\n\n// Recorremos la lista de tiempos (normalmente 48 horas)\nfor (let i = 0; i < hourly.time.length; i++) {\n  result.push({\n    json: {\n      time: hourly.time[i],\n      temperature_2m: hourly.temperature_2m[i],\n      precipitation: hourly.precipitation[i]\n    }\n  });\n}\n\n// Al devolver un array, n8n crea un \"ítem\" independiente por cada elemento\nreturn result;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        -128
+      ],
+      "id": "2a9e767e-9ebd-43b2-8df1-be534bed3cb6",
+      "name": "dividir tiempo"
+    },
+    {
+      "parameters": {
+        "jsCode": "const hourly = $input.first().json.hourly;\nconst result = [];\n\nfor (let i = 0; i < hourly.time.length; i++) {\n  result.push({\n    json: {\n      time: hourly.time[i],\n      pm10: hourly.pm10[i],\n      pm2_5: hourly.pm2_5[i],\n      carbon_dioxide: hourly.carbon_dioxide[i],\n      uv_index: hourly.uv_index[i],\n      olive_pollen: hourly.olive_pollen[i],\n      ozone: hourly.ozone[i],\n      methane: hourly.methane[i]\n    }\n  });\n}\n\nreturn result;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        400
+      ],
+      "id": "66da2855-9be1-46ca-969e-56278abd3d5b",
+      "name": "dividir aire"
+    },
+    {
+      "parameters": {
+        "operation": "toJson",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        176,
+        16
+      ],
+      "id": "bc24f82c-0c01-4e46-8518-5108ac7d92d7",
+      "name": "Convert to File tiempo"
+    },
+    {
+      "parameters": {
+        "operation": "toJson",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        176,
+        208
+      ],
+      "id": "a09f1eb5-7f1e-4102-9e4c-4caf1a77b212",
+      "name": "Convert to File aire"
+    },
+    {
+      "parameters": {
+        "queue": "air_queue",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rabbitmq",
+      "typeVersion": 1.1,
+      "position": [
+        608,
+        400
+      ],
+      "id": "7ae78713-ed5e-4ca7-932a-b5b61eb3c23a",
+      "name": "RabbitMQ air",
+      "credentials": {
+        "rabbitmq": {
+          "id": "XYeomUaB2fNXI2rg",
+          "name": "RabbitMQ account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "queue": "weather_queue",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rabbitmq",
+      "typeVersion": 1.1,
+      "position": [
+        608,
+        -128
+      ],
+      "id": "01ca6bc1-abe7-48da-bdb8-6dec42aaafd9",
+      "name": "RabbitMQ tiempo",
+      "credentials": {
+        "rabbitmq": {
+          "id": "5RPhMcLLuMrhbNkJ",
+          "name": "RabbitMQ account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "bucketName": "raw-ingestion-zone",
+        "fileName": "=weather/{{ $('Edit Fields tiempo').item.json.fileName }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.s3",
+      "typeVersion": 1,
+      "position": [
+        608,
+        16
+      ],
+      "id": "a00a9c55-ae3e-4a48-935b-387e70b08401",
+      "name": "Upload a file",
+      "credentials": {
+        "s3": {
+          "id": "ws5nZzaoGRDqevp2",
+          "name": "S3 account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// Sacamos todas las fechas que vienen en los items\nconst dates = items.map(item => {\n  const time = item.json.time || item.json.datetime;\n\n  if (!time) {\n    throw new Error(\"Falta el campo time/datetime en weather\");\n  }\n\n  return time.split(\"T\")[0];\n});\n\n// Como Open-Meteo devuelve ayer + hoy, nos quedamos con la fecha menor\nconst targetDate = [...new Set(dates)].sort()[0];\n\nconst result = items.filter(item => {\n  const time = item.json.time || item.json.datetime;\n  const itemDate = time.split(\"T\")[0];\n\n  return itemDate === targetDate;\n});\n\nreturn result;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        384,
+        -128
+      ],
+      "id": "b2c9cc8f-91c6-42e2-96bb-d2cd1924b190",
+      "name": "dia correcto tiempo"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// Sacamos todas las fechas que vienen en los items\nconst dates = items.map(item => {\n  const time = item.json.time || item.json.datetime;\n\n  if (!time) {\n    throw new Error(\"Falta el campo time/datetime en air_quality\");\n  }\n\n  return time.split(\"T\")[0];\n});\n\n// Como Open-Meteo devuelve ayer + hoy, nos quedamos con la fecha menor\nconst targetDate = [...new Set(dates)].sort()[0];\n\nconst result = items.filter(item => {\n  const time = item.json.time || item.json.datetime;\n  const itemDate = time.split(\"T\")[0];\n\n  return itemDate === targetDate;\n});\n\nreturn result;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        384,
+        400
+      ],
+      "id": "18b0f24a-3acf-45b9-93f7-8290b91dc1c9",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields tiempo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields aire",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields aire": {
+      "main": [
+        [
+          {
+            "node": "Convert to File aire",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "dividir aire",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields tiempo": {
+      "main": [
+        [
+          {
+            "node": "Convert to File tiempo",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "dividir tiempo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "dividir tiempo": {
+      "main": [
+        [
+          {
+            "node": "dia correcto tiempo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File tiempo": {
+      "main": [
+        [
+          {
+            "node": "Upload a file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File aire": {
+      "main": [
+        [
+          {
+            "node": "Upload a file1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "dividir aire": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "dia correcto tiempo": {
+      "main": [
+        [
+          {
+            "node": "RabbitMQ tiempo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "RabbitMQ air",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "f7a44a8e-7da7-472f-8b5c-7884a8d75071",
+  "meta": {
+    "instanceId": "dc56c1de1538ac3f8c6776c1a8053d7f332a674e42e7af81fb11b52e70b92e69"
+  },
+  "id": "DkqSXFBXZvNN0HoZ",
+  "tags": []
+}

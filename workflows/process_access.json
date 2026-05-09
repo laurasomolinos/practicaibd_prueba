@@ -1,0 +1,382 @@
+{
+  "name": "process/access",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -912,
+        -128
+      ],
+      "id": "2a002bcb-cdb7-40ef-a6e3-0db802f28bcc",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 2
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -912,
+        64
+      ],
+      "id": "036dcba4-9439-4300-8e67-5e30b5a05093",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "bucketName": "clean-zone",
+        "returnAll": true,
+        "options": {
+          "fetchOwner": false,
+          "folderKey": "={{ $json.airPrefix }}"
+        }
+      },
+      "type": "n8n-nodes-base.s3",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        96
+      ],
+      "id": "bde57ab2-e367-4421-821e-6145edb782c5",
+      "name": "get files air",
+      "credentials": {
+        "s3": {
+          "id": "ws5nZzaoGRDqevp2",
+          "name": "S3 account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "bucketName": "clean-zone",
+        "returnAll": true,
+        "options": {
+          "fetchOwner": false,
+          "folderKey": "={{ $json.weatherPrefix }}"
+        }
+      },
+      "type": "n8n-nodes-base.s3",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -112
+      ],
+      "id": "a68dfe7e-9063-4589-bdb7-5f52c12c4eab",
+      "name": "get files weather",
+      "credentials": {
+        "s3": {
+          "id": "ws5nZzaoGRDqevp2",
+          "name": "S3 account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = [];\n\nfor (let i = 0; i < $input.all().length; i++) {\n  const item = $input.all()[i];\n\n  const buffer = await this.helpers.getBinaryDataBuffer(i, 'data');\n\n  let text = buffer.toString('utf8');\n\n  // Limpiamos espacios raros o BOM si hubiera\n  text = text.replace(/^\\uFEFF/, '').trim();\n\n  const json = JSON.parse(text);\n\n  output.push({\n    json: {\n      source: 'air',\n      ...json\n    }\n  });\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -272,
+        96
+      ],
+      "id": "dc8e41d2-10f2-4e51-b86e-871d90f597a2",
+      "name": "parse air"
+    },
+    {
+      "parameters": {
+        "jsCode": "let records = $input.all().map(i => i.json);\n\nrecords = records\n  .filter(r => r.datetime)\n  .sort((a, b) => new Date(a.datetime) - new Date(b.datetime));\n\nfunction sumField(records, field) {\n  return records.reduce((acc, r) => acc + Number(r[field] || 0), 0);\n}\n\nfunction avgField(records, field) {\n  if (records.length === 0) return 0;\n  return records.reduce((acc, r) => acc + Number(r[field] || 0), 0) / records.length;\n}\n\nfunction percentage(value, total) {\n  if (!total || total === 0) return 0;\n  return Number(((Number(value || 0) / total) * 100).toFixed(2));\n}\n\nconst totalTemperature = sumField(records, 'temperature_2m');\nconst totalPrecipitation = sumField(records, 'precipitation');\nconst totalPm10 = sumField(records, 'pm10');\nconst totalPm25 = sumField(records, 'pm2_5');\nconst totalCarbonDioxide = sumField(records, 'carbon_dioxide');\nconst totalUvIndex = sumField(records, 'uv_index');\nconst totalOlivePollen = sumField(records, 'olive_pollen');\nconst totalOzone = sumField(records, 'ozone');\nconst totalMethane = sumField(records, 'methane');\n\nconst toxicThresholdPm10 = 10;\nconst toxicThresholdPm25 = 5;\nconst toxicThresholdOzone = 90;\nconst toxicThresholdCo2 = 450;\n\nconst enrichedRecords = records.map(r => {\n  const isToxic =\n    Number(r.pm10 || 0) > toxicThresholdPm10 ||\n    Number(r.pm2_5 || 0) > toxicThresholdPm25 ||\n    Number(r.ozone || 0) > toxicThresholdOzone ||\n    Number(r.carbon_dioxide || 0) > toxicThresholdCo2;\n\n  return {\n    datetime: r.datetime,\n    date: r.date,\n    year: r.year,\n    month:r.month,\n    day:r.day,\n    hour: r.hour,\n    city: r.city || 'Madrid',\n\n    temperature_2m: r.temperature_2m,\n    precipitation: r.precipitation,\n    temperature_percentage_of_day: percentage(r.temperature_2m, totalTemperature),\n    precipitation_percentage_of_day: percentage(r.precipitation, totalPrecipitation),\n\n    pm10: r.pm10,\n    pm2_5: r.pm2_5,\n    carbon_dioxide: r.carbon_dioxide,\n    uv_index: r.uv_index,\n    olive_pollen: r.olive_pollen,\n    ozone: r.ozone,\n    methane: r.methane,\n\n    pm10_percentage_of_day: percentage(r.pm10, totalPm10),\n    pm2_5_percentage_of_day: percentage(r.pm2_5, totalPm25),\n    carbon_dioxide_percentage_of_day: percentage(r.carbon_dioxide, totalCarbonDioxide),\n    uv_index_percentage_of_day: percentage(r.uv_index, totalUvIndex),\n    olive_pollen_percentage_of_day: percentage(r.olive_pollen, totalOlivePollen),\n    ozone_percentage_of_day: percentage(r.ozone, totalOzone),\n    methane_percentage_of_day: percentage(r.methane, totalMethane),\n\n    is_toxic: isToxic\n  };\n});\n\nconst toxicHours = enrichedRecords.filter(r => r.is_toxic).length;\nconst precipitationHours = enrichedRecords.filter(r => Number(r.precipitation || 0) > 0).length;\n\nconst summary = {\n  total_records: enrichedRecords.length,\n  toxic_hours: toxicHours,\n  toxic_hours_percentage: enrichedRecords.length ? Number(((toxicHours / enrichedRecords.length) * 100).toFixed(2)) : 0,\n  precipitation_hours: precipitationHours,\n  precipitation_hours_percentage: enrichedRecords.length ? Number(((precipitationHours / enrichedRecords.length) * 100).toFixed(2)) : 0,\n  average_temperature_2m: Number(avgField(enrichedRecords, 'temperature_2m').toFixed(2)),\n  total_precipitation: Number(totalPrecipitation.toFixed(2)),\n  average_pm10: Number(avgField(enrichedRecords, 'pm10').toFixed(2)),\n  average_pm2_5: Number(avgField(enrichedRecords, 'pm2_5').toFixed(2)),\n  average_ozone: Number(avgField(enrichedRecords, 'ozone').toFixed(2)),\n  max_uv_index: enrichedRecords.length ? Math.max(...enrichedRecords.map(r => Number(r.uv_index || 0))) : 0\n};\n\nreturn enrichedRecords.map(record => {\n  const { datetime, ...recordWithoutDatetime } = record;\n\n  return {\n    json: {\n      summary_total_records: summary.total_records,\n      summary_toxic_hours: summary.toxic_hours,\n      summary_toxic_hours_percentage: summary.toxic_hours_percentage,\n      summary_precipitation_hours: summary.precipitation_hours,\n      summary_precipitation_hours_percentage: summary.precipitation_hours_percentage,\n      summary_average_temperature_2m: summary.average_temperature_2m,\n      summary_total_precipitation: summary.total_precipitation,\n      summary_average_pm10: summary.average_pm10,\n      summary_average_pm2_5: summary.average_pm2_5,\n      summary_average_ozone: summary.average_ozone,\n      summary_max_uv_index: summary.max_uv_index,\n      ...recordWithoutDatetime\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        112,
+        0
+      ],
+      "id": "f088c5d2-f1b1-4bda-9b0f-48bbad0516ff",
+      "name": "unir diario"
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\n\n// Procesamos el día anterior.\n// Si queréis procesar el día actual, quitad esta línea.\nnow.setDate(now.getDate() - 1);\n\nconst year = now.getFullYear();\nconst month = String(now.getMonth() + 1).padStart(2, '0');\nconst day = String(now.getDate()).padStart(2, '0');\n\nconst date = `${year}_${month}_${day}`;\n\nreturn [\n  {\n    json: {\n      year,\n      month,\n      day,\n      date,\n      airPrefix: `air/${year}/${month}/${day}/`,\n      weatherPrefix: `weather/${year}/${month}/${day}/`,\n      outputCsvName: `${year}_${month}_${day}.csv`\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -720,
+        16
+      ],
+      "id": "349582ec-fcfe-4c5a-b249-dd01f17870a5",
+      "name": "calcular fecha"
+    },
+    {
+      "parameters": {
+        "bucketName": "clean-zone",
+        "fileKey": "={{ $json.Key }}"
+      },
+      "type": "n8n-nodes-base.s3",
+      "typeVersion": 1,
+      "position": [
+        -416,
+        -112
+      ],
+      "id": "5a6ffb41-ebe1-41dc-96e1-0f33314746c9",
+      "name": "Download weather",
+      "credentials": {
+        "s3": {
+          "id": "ws5nZzaoGRDqevp2",
+          "name": "S3 account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = [];\n\nfor (let i = 0; i < $input.all().length; i++) {\n  const item = $input.all()[i];\n\n  const buffer = await this.helpers.getBinaryDataBuffer(i, 'data');\n\n  let text = buffer.toString('utf8');\n\n  text = text.replace(/^\\uFEFF/, '').trim();\n\n  const json = JSON.parse(text);\n\n  output.push({\n    json: {\n      source: 'weather',\n      ...json\n    }\n  });\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -288,
+        -112
+      ],
+      "id": "44887fb0-77e0-41c2-ad81-2c537703f747",
+      "name": "parse weather"
+    },
+    {
+      "parameters": {
+        "bucketName": "clean-zone",
+        "fileKey": "={{ $json.Key }}"
+      },
+      "type": "n8n-nodes-base.s3",
+      "typeVersion": 1,
+      "position": [
+        -416,
+        96
+      ],
+      "id": "22dfb96b-5470-4fb4-a404-61ffeb51ca69",
+      "name": "Download air",
+      "credentials": {
+        "s3": {
+          "id": "ws5nZzaoGRDqevp2",
+          "name": "S3 account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        272,
+        0
+      ],
+      "id": "80e5e75c-34d1-4964-a3ef-7bff1861ea31",
+      "name": "convert csv"
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "bucketName": "access-zone",
+        "fileName": "={{ $('calcular fecha').first().json.outputCsvName }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.s3",
+      "typeVersion": 1,
+      "position": [
+        432,
+        0
+      ],
+      "id": "1cd6bed7-9651-4b05-a45f-a0d4a530ea4a",
+      "name": "upload access-zone",
+      "credentials": {
+        "s3": {
+          "id": "ws5nZzaoGRDqevp2",
+          "name": "S3 account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "fieldsToMatchString": "datetime",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -48,
+        0
+      ],
+      "id": "c41491f7-4702-489d-bd7f-3cf43b2caeb0",
+      "name": "Merge"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "calcular fecha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "calcular fecha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get files weather": {
+      "main": [
+        [
+          {
+            "node": "Download weather",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get files air": {
+      "main": [
+        [
+          {
+            "node": "Download air",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "parse air": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "unir diario": {
+      "main": [
+        [
+          {
+            "node": "convert csv",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "calcular fecha": {
+      "main": [
+        [
+          {
+            "node": "get files weather",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "get files air",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download weather": {
+      "main": [
+        [
+          {
+            "node": "parse weather",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "parse weather": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download air": {
+      "main": [
+        [
+          {
+            "node": "parse air",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "convert csv": {
+      "main": [
+        [
+          {
+            "node": "upload access-zone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "unir diario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v0",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "7c25c5f1-6945-4e50-9853-f74b84c65348",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "dc56c1de1538ac3f8c6776c1a8053d7f332a674e42e7af81fb11b52e70b92e69"
+  },
+  "id": "o1fno5Uv6YlHKDV3",
+  "tags": []
+}

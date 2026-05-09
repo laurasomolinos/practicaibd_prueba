@@ -1,0 +1,120 @@
+{
+  "name": "clean weather",
+  "nodes": [
+    {
+      "parameters": {
+        "queue": "weather_queue",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rabbitmqTrigger",
+      "typeVersion": 1,
+      "position": [
+        -320,
+        -16
+      ],
+      "id": "69d5b9aa-3761-490a-973d-839237053355",
+      "name": "escucha weather_queue",
+      "credentials": {
+        "rabbitmq": {
+          "id": "XYeomUaB2fNXI2rg",
+          "name": "RabbitMQ account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nfunction getPayload(item) {\n  let data = item.json;\n\n  // Caso 1: ya viene directamente con time/datetime\n  if (data.time || data.datetime) {\n    return data;\n  }\n\n  // Caso 2: viene dentro de json\n  if (data.json) {\n    if (typeof data.json === \"string\") {\n      return JSON.parse(data.json);\n    }\n    return data.json;\n  }\n\n  // Caso 3: viene dentro de message\n  if (data.message) {\n    if (typeof data.message === \"string\") {\n      return JSON.parse(data.message);\n    }\n    return data.message;\n  }\n\n  // Caso 4: viene dentro de content\n  if (data.content) {\n    if (typeof data.content === \"string\") {\n      return JSON.parse(data.content);\n    }\n    return data.content;\n  }\n\n  // Caso 5: viene dentro de body\n  if (data.body) {\n    if (typeof data.body === \"string\") {\n      return JSON.parse(data.body);\n    }\n    return data.body;\n  }\n\n  throw new Error(\n    \"No encuentro el mensaje real. Campos recibidos: \" + Object.keys(data).join(\", \")\n  );\n}\n\nconst result = items.map(item => {\n  const data = getPayload(item);\n\n  const datetime = data.datetime || data.time;\n\n  if (!datetime) {\n    throw new Error(\n      \"Falta el campo time/datetime. Campos recibidos: \" + Object.keys(data).join(\", \")\n    );\n  }\n\n  const [datePart, timePart] = datetime.split(\"T\");\n\n  if (!datePart || !timePart) {\n    throw new Error(`Formato de fecha inválido: ${datetime}`);\n  }\n\n  const [year, month, day] = datePart.split(\"-\");\n  const [hour] = timePart.split(\":\");\n\n  // Quitamos time para no duplicar con datetime\n  const { time, ...dataWithoutTime } = data;\n\n  return {\n    json: {\n      datetime: datetime,\n      date: datePart,\n      year: Number(year),\n      month: Number(month),\n      day: Number(day),\n      hour: Number(hour),\n      ...dataWithoutTime\n    }\n  };\n});\n\nreturn result;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -112,
+        0
+      ],
+      "id": "d4a30d62-8dba-4d69-b8a3-1d121104f946",
+      "name": "dividir time weather"
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "bucketName": "clean-zone",
+        "fileName": "={{ $json.path }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.s3",
+      "typeVersion": 1,
+      "position": [
+        320,
+        0
+      ],
+      "id": "dbada338-94f2-42e9-af0b-16a2d30d0c18",
+      "name": "Upload a file",
+      "credentials": {
+        "s3": {
+          "id": "ws5nZzaoGRDqevp2",
+          "name": "S3 account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\nconst year = item.year;\nconst month = String(item.month).padStart(2, '0');\nconst day = String(item.day).padStart(2, '0');\nconst hour = String(item.hour).padStart(2, '0');\n\nconst path = `weather/${year}/${month}/${day}/weather${item.date}_${hour}.json`;\n\nconst content = JSON.stringify(item, null, 2);\n\nreturn [\n  {\n    json: {\n      path: path\n    },\n    binary: {\n      data: {\n        data: Buffer.from(content, 'utf8').toString('base64'),\n        mimeType: 'application/json',\n        fileName: `weather${item.date}_${hour}.json`\n      }\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        0
+      ],
+      "id": "e4d59325-6f8a-4b2a-9fe2-a1d47114e195",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "escucha weather_queue": {
+      "main": [
+        [
+          {
+            "node": "dividir time weather",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "dividir time weather": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Upload a file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "60a817dc-100a-4b71-be53-276281cc75bd",
+  "meta": {
+    "instanceId": "dc56c1de1538ac3f8c6776c1a8053d7f332a674e42e7af81fb11b52e70b92e69"
+  },
+  "id": "WVwvVh5l6n7xmtVo",
+  "tags": []
+}
