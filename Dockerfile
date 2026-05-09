@@ -7,4 +7,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY scripts/ /app/scripts/
 
-CMD ["python", "/app/scripts/process_worker.py"]
+CMD ["python"]

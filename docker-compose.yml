@@ -52,9 +52,8 @@ services:
 
       /usr/bin/mc mb --ignore-existing minio/raw-ingestion-zone;
       /usr/bin/mc mb --ignore-existing minio/clean-zone;
-      /usr/bin/mc mb --ignore-existing minio/process-zone;
       /usr/bin/mc mb --ignore-existing minio/access-zone;
-      
+
       echo 'MinIO buckets ready';
       exit 0;
       "
@@ -77,95 +76,31 @@ services:
       - datalake
 
 
-  clean-worker:
-    build: .
-    container_name: clean-worker
-    command: python -u /app/scripts/clean_worker.py
-    environment:
-      - PYTHONUNBUFFERED=1
-
-      # RabbitMQ
-      - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_PORT=5672
-      - RABBITMQ_USER=guest
-      - RABBITMQ_PASSWORD=guest
-      - AIR_QUEUE=air_queue
-      - WEATHER_QUEUE=weather_queue
-
-      # MinIO
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=minio
-      - MINIO_SECRET_KEY=minio123
-      - MINIO_SECURE=false
-      - CLEAN_BUCKET=clean-zone
-
-      # Webhook del Workflow 2 en n8n
-      # MODO TEST:
-      - N8N_PIPELINE_WEBHOOK_URL=http://n8n:5678/webhook-test/run-pipeline
-
-      # MODO PRODUCCIÓN:
-      # Cuando actives el Workflow 2 en n8n, comenta la línea anterior y usa esta:
-      # - N8N_PIPELINE_WEBHOOK_URL=http://n8n:5678/webhook/run-pipeline
-
+  rabbitmq-init:
+    image: rabbitmq:3-management
+    container_name: rabbitmq-init
     depends_on:
       - rabbitmq
-      - minio
-      - n8n
-    restart: on-failure
-    networks:
-      - datalake
+    restart: "no"
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Waiting for RabbitMQ...';
 
+      sleep 10;
 
-  process-worker:
-    build: .
-    container_name: process-worker
-    command: python -u /app/scripts/process_worker.py
-    ports:
-      - "8001:8001"
-    environment:
-      - PYTHONUNBUFFERED=1
+      until rabbitmqadmin -H rabbitmq -P 15672 -u guest -p guest list queues > /dev/null 2>&1; do
+        echo 'Waiting for RabbitMQ Management API...';
+        sleep 2;
+      done;
 
-      # MinIO
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=minio
-      - MINIO_SECRET_KEY=minio123
-      - MINIO_SECURE=false
-      - CLEAN_BUCKET=clean-zone
-      - PROCESS_BUCKET=process-zone
+      echo 'Creating RabbitMQ queues...';
 
-      # Flask
-      - PORT=8001
+      rabbitmqadmin -H rabbitmq -P 15672 -u guest -p guest declare queue name=air_queue durable=false;
+      rabbitmqadmin -H rabbitmq -P 15672 -u guest -p guest declare queue name=weather_queue durable=false;
 
-    depends_on:
-      - minio
-    restart: on-failure
-    networks:
-      - datalake
-
-
-  access-worker:
-    build: .
-    container_name: access-worker
-    command: python -u /app/scripts/access_worker.py
-    ports:
-      - "8002:8002"
-    environment:
-      - PYTHONUNBUFFERED=1
-
-      # MinIO
-      - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=minio
-      - MINIO_SECRET_KEY=minio123
-      - MINIO_SECURE=false
-      - PROCESS_BUCKET=process-zone
-      - ACCESS_BUCKET=access-zone
-
-      # Flask
-      - PORT=8002
-
-    depends_on:
-      - minio
-    restart: on-failure
+      echo 'RabbitMQ queues ready';
+      exit 0;
+      "
     networks:
       - datalake
 
